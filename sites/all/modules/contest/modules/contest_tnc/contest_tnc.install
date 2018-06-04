@@ -1,0 +1,101 @@
+<?php
+
+/**
+ * @file
+ * The installation file for the contest_tnc module.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function contest_tnc_install() {
+  global $user;
+
+  variable_get('contest_tnc_enable_sponsor', 0);
+
+  if (empty($user->uid)) {
+    $user = user_load(1);
+  }
+  if (!variable_get('contest_tnc_host_title', '')) {
+    variable_set('contest_tnc_host_title', $user->name);
+  }
+  if (!variable_get('contest_tnc_host_uid', 0)) {
+    variable_set('contest_tnc_host_uid', $user->uid);
+  }
+  // Build some content blocks using the block system for storage.
+  $bid = _contest_tnc_install_block_add('Contest Terms and Conditions', _contest_tnc_install_tnc());
+
+  variable_set('contest_tnc_block', $bid);
+}
+
+/**
+ * Implements hook_requirements().
+ */
+function contest_tnc_requirements($phase) {
+  module_load_include('inc', 'contest_tnc', 'contest_tnc.install');
+  $opts = array('attributes' => array('target' => '_blank'));
+  $reqs = array();
+  $t = get_t();
+
+  $link = l($t('regional settings'), 'admin/config/regional/settings', $opts);
+  $args = array('!link' => $link);
+
+  switch ($phase) {
+    case 'install':
+      if (!variable_get('site_default_country', NULL)) {
+        $reqs['system'] = array(
+          'title'       => 'Default Country',
+          'value'       => $t("The default country isn't configured."),
+          'severity'    => REQUIREMENT_ERROR,
+          'description' => $t("Aborting! The default country needs to be configured. Please go to !link to configure.<br />\n", $args),
+        );
+      }
+      if (!variable_get('date_default_timezone', NULL)) {
+        $reqs['system'] = array(
+          'title'       => 'Default Timezone',
+          'value'       => $t("The default timezone isn't configured."),
+          'severity'    => REQUIREMENT_ERROR,
+          'description' => $t("Aborting! Thedefault timezone needs to be configured. Please go to !link to configure.<br />\n", $args),
+        );
+      }
+      break;
+  }
+  return $reqs;
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function contest_tnc_uninstall() {
+
+  // Delete the T&C block.
+  db_delete('block_custom')->condition('bid', variable_get('contest_tnc_block'))->execute();
+
+  // Delete the variables.
+  $vars = db_query("SELECT name FROM {variable} WHERE name LIKE :name", array(':name' => 'contest\_tnc\_%'))->fetchCol();
+
+  foreach ($vars as $var) {
+    variable_del($var);
+  }
+  cache_clear_all('variables', 'cache_bootstrap');
+  cache_clear_all('*', 'cache_menu', TRUE);
+  menu_reset_static_cache();
+}
+
+/**
+ * Copy the contest variables over to contest_tnc.
+ */
+function contest_tnc_update_7001() {
+  if (variable_get('contest_block_tnc', 0) && !variable_get('contest_tnc_block', 0)) {
+    variable_set('contest_tnc_block', variable_get('contest_block_tnc', 0));
+  }
+  if (variable_get('contest_host_title', 0) && !variable_get('contest_tnc_host_title', 0)) {
+    variable_set('contest_tnc_host_title', variable_get('contest_host_title', 0));
+  }
+  if (variable_get('contest_host_uid', 0) && !variable_get('contest_tnc_host_uid', 0)) {
+    variable_set('contest_tnc_host_uid', variable_get('contest_host_uid', 0));
+  }
+  variable_del('contest_block_tnc');
+  variable_del('contest_host_title');
+  variable_del('contest_host_uid');
+}

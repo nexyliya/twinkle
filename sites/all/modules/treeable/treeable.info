@@ -1,0 +1,11 @@
+name = Treeable
+description = Allows multi-value fields to be stored and displayed as hierarchical trees.
+files[]=treeable.module
+core = 7.x
+
+; Information added by Drupal.org packaging script on 2015-05-17
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "treeable"
+datestamp = "1431869582"
+

@@ -1,0 +1,23 @@
+<?php
+
+/**
+ * @file
+ * Install and uninstall functionality for Audio Field module.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function audiofield_install() {
+  // Set default audio player.
+  variable_set('audiofield_audioplayer', 'html5');
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function audiofield_uninstall() {
+  db_delete('variable')
+    ->condition('name', 'audiofield_%%', 'LIKE')
+    ->execute();
+}

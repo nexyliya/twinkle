@@ -1,0 +1,30 @@
+name = "Contest"
+description = Allows your site to host a random game of chance where contestants win prizes via a random drawing, (Sweepstakes).
+package = Contest
+core = "7.x"
+configure = admin/config/contest
+
+files[] = src/ContestCache.php
+files[] = src/ContestData.php
+files[] = src/ContestHelper.php
+files[] = src/ContestStorage.php
+files[] = src/ContestUser.php
+
+dependencies[] = block
+dependencies[] = date
+dependencies[] = date_api
+dependencies[] = date_popup
+dependencies[] = field
+dependencies[] = field_sql_storage
+dependencies[] = list
+dependencies[] = node
+dependencies[] = options
+dependencies[] = text
+dependencies[] = user
+
+; Information added by Drupal.org packaging script on 2018-03-20
+version = "7.x-2.0"
+core = "7.x"
+project = "contest"
+datestamp = "1521579796"
+

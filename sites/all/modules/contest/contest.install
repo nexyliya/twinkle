@@ -1,0 +1,244 @@
+<?php
+
+/**
+ * @file
+ * The installation file for the contest module.
+ */
+
+module_load_include('inc', 'contest', 'contest.install');
+
+/**
+ * Implements hook_enable().
+ */
+function contest_enable() {
+  $enabled = FALSE;
+
+  // Enable the field_ui module.
+  if (!module_exists('field_ui')) {
+    if (module_enable(array('field_ui'))) {
+      $enabled = TRUE;
+    }
+    else {
+      return _contest_install_feedback("Aborting! The field_ui module must exist to enable the contest module. It's not set as a dependency so it can be disabled later if desired.");
+    }
+  }
+  // Create the profile fields.
+  _contest_install_user_fields();
+
+  // If we enabled the field_ui module disable it.
+  if ($enabled) {
+    module_disable(array('field_ui'));
+  }
+  // Set the display settings for the "block" view mode.
+  $instance = field_read_instance('node', 'body', 'contest');
+
+  $instance['display']['block'] = array(
+    'label'    => 'hidden',
+    'type'     => 'text_summary_or_trimmed',
+    'settings' => array('trim_length' => 100),
+    'module'   => 'text',
+    'weight'   => 0,
+  );
+  field_update_instance($instance);
+}
+
+/**
+ * Implements hook_install().
+ */
+function contest_install() {
+  variable_set('contest_dq_days', 89);
+  variable_set('contest_min_age', 18);
+
+  _contest_install_type_create();
+}
+
+/**
+ * Implements hook_schema().
+ */
+function contest_schema() {
+  $schema['contest'] = array(
+    'description' => 'Stores contest-specific information for contest nodes.',
+    'fields' => array(
+      'nid' => array(
+        'description' => "The contest's {node}.nid.",
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+      ),
+      'vid' => array(
+        'description' => "The contest's {node}.vid.",
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+      ),
+      'sponsor_uid' => array(
+        'description' => "The sponsor's {user}.uid.",
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+      ),
+      'sponsor_url' => array(
+        'description' => "The sponsor's URL",
+        'type'        => 'varchar',
+        'length'      => 100,
+        'not null'    => TRUE,
+        'default'     => '',
+      ),
+      'start' => array(
+        'description' => 'The contest start date.',
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+      ),
+      'end' => array(
+        'description' => 'The contest end date.',
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+      ),
+      'places' => array(
+        'description' => 'The number of places in the contest.',
+        'type'        => 'int',
+        'size'        => 'tiny',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+      ),
+      'period' => array(
+        'description' => 'The length of time the contest will run.',
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+      ),
+      'publish_winners' => array(
+        'description' => 'A flag to determine if the winners should be displayed.',
+        'type'        => 'int',
+        'size'        => 'tiny',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+      ),
+    ),
+    'indexes' => array(
+      'start' => array('start'),
+      'end'   => array('end'),
+    ),
+    'primary key' => array('nid'),
+  );
+  $schema['contest_entry'] = array(
+    'description' => 'Stores contest entries.',
+    'fields' => array(
+      'nid' => array(
+        'description' => "The contest's {node}.nid.",
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+      ),
+      'uid' => array(
+        'description' => "The entrants's {user}.uid.",
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+      ),
+      'created' => array(
+        'description' => 'The date of the contest entry.',
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+      ),
+      'ip' => array(
+        'description' => "The entrant's IP address.",
+        'type'        => 'varchar',
+        'length'      => 16,
+        'not null'    => TRUE,
+        'default'     => '',
+      ),
+      'winner' => array(
+        'description' => 'A flag to determine if the winners should be displayed.',
+        'type'        => 'int',
+        'size'        => 'tiny',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+        'default'     => 0,
+      ),
+    ),
+    'indexes' => array(
+      'nid' => array('nid'),
+      'uid' => array('uid'),
+    ),
+    'primary key' => array('nid', 'uid', 'created'),
+  );
+  return $schema;
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function contest_uninstall() {
+  $module = 'contest_tnc';
+
+  if (module_exists($module)) {
+    module_disable(array($module));
+    drupal_uninstall_modules(array($module));
+  }
+  // Delete the variables.
+  $vars = db_query("SELECT name FROM {variable} WHERE name LIKE :name", array(':name' => 'contest\_%'))->fetchCol();
+
+  foreach ($vars as $var) {
+    variable_del($var);
+  }
+  // Delete the contest nodes and their body field.
+  $rows = db_query("SELECT nid FROM {node} n WHERE n.type = :type", array(':type' => 'contest'));
+
+  foreach ($rows as $row) {
+    node_delete($row->nid);
+  }
+  $instance = array(
+    'field_name'  => 'body',
+    'bundle'      => 'contest',
+    'entity_type' => 'node',
+  );
+  field_delete_instance($instance);
+
+  // Delete menu links.
+  db_delete('menu_links')->condition('module', 'contest')->execute();
+
+  cache_clear_all('variables', 'cache_bootstrap');
+  cache_clear_all('*', 'cache_menu', TRUE);
+  menu_reset_static_cache();
+}
+
+/**
+ * Change the birthdate display widget to pop-up.
+ */
+function contest_update_7001() {
+  $info = field_info_instance('user', 'field_contest_birthdate', 'user');
+
+  if ($info['widget']['type'] == 'date_popup') {
+    return;
+  }
+  $info['widget'] = array(
+    'type'     => 'date_popup',
+    'weight'   => -40,
+    'module'   => 'date',
+    'settings' => array(
+      'date_increment' => 86400,
+      'date_timezone'  => date_default_timezone(),
+      'input_format'   => 'Y-m-d',
+      'label_position' => 'invisible',
+      'year_range'     => '-100:+0',
+      'increment'      => 15,
+      'text_parts'     => array(),
+    ),
+  );
+  field_update_instance($info);
+}

@@ -1,0 +1,801 @@
+<?php
+
+/**
+ * @file
+ * The contest module file.
+ */
+
+/**
+ * Implements hook_admin_paths().
+ */
+function contest_admin_paths() {
+  if (variable_get('node_admin_theme', FALSE)) {
+    return array(
+      'admin/config/contest'        => TRUE,
+      'contest/clear-winners/*'     => TRUE,
+      'contest/export-all'          => TRUE,
+      'contest/export-entries/*'    => TRUE,
+      'contest/export-unique/*'     => TRUE,
+      'contest/pick-winner/*'       => TRUE,
+      'contest/publish-winners/*'   => TRUE,
+      'contest/unpublish-winners/*' => TRUE,
+      'contest/usr-autocomplete'    => TRUE,
+      'node/*/contest-admin'        => TRUE,
+    );
+  }
+}
+
+/**
+ * Implements hook_block_info().
+ */
+function contest_block_info() {
+  return array(
+    'contest_list' => array(
+      'info'       => t('Contest List'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function contest_block_view($delta = '') {
+  switch ($delta) {
+    case 'contest_list':
+      return array(
+        'content' => theme('contest_list_block', ContestData::contestList('block')),
+      );
+  }
+  return array();
+}
+
+/**
+ * Implements hook_entity_info_alter().
+ */
+function contest_entity_info_alter(&$entity_info) {
+  $entity_info['node']['view modes']['block'] = array(
+    'label'           => t('Block'),
+    'custom settings' => TRUE,
+  );
+}
+
+/**
+ * Contest entry form.
+ *
+ * @return array
+ *   A Drupal form array.
+ */
+function contest_entry_form() {
+  global $user;
+  $link = l(t('here'), 'user/login');
+  $states = ContestStorage::getStates(variable_get('site_default_country', ''));
+
+  // Add the JavaScript and CSS.
+  drupal_add_css(drupal_get_path('module', 'contest') . '/css/contest.css');
+  drupal_add_js(drupal_get_path('module', 'contest') . '/js/contest.js');
+
+  // Load the full user object.
+  $usr = new ContestUser($user->uid);
+
+  // Build the form.
+  $form = array(
+    '#id'       => 'contest-entry-form',
+    '#submit'   => array('contest_entry_form_submit'),
+    '#validate' => array('contest_entry_form_validate'),
+  );
+  $form['uid'] = array(
+    '#type'   => 'hidden',
+    '#value'  => $usr->uid,
+    '#weight' => -10,
+  );
+  $form['nid'] = array(
+    '#type'   => 'hidden',
+    '#value'  => intval(arg(1)),
+    '#weight' => -10,
+  );
+  $form['heading2'] = array(
+    '#type'   => 'markup',
+    '#markup' => $usr->uid ? '' : '<p><b>' . t('Please fill in and submit the form below, (all fields are required).') . '</b><br />' . t('If you already have an account click !link to log in and skip filling in the form.', array('!link' => $link)) . '</p>',
+    '#weight' => -1,
+  );
+  $form['fieldset'] = array(
+    '#type'        => 'fieldset',
+    '#title'       => t('Contestant Profile'),
+    '#attributes'  => $usr->uid ? array('class' => array('collapsible', 'collapsed')) : array('class' => array('collapsible')),
+    '#collapsible' => TRUE,
+    '#collapsed'   => $usr->uid ? TRUE : FALSE,
+  );
+  $form['fieldset']['contest_name'] = array(
+    '#title'         => t('Name'),
+    '#type'          => 'textfield',
+    '#attributes'    => array('pattern' => '^[\s\w\-\.]+$'),
+    '#default_value' => $usr->fullName,
+    '#size'          => 30,
+    '#maxlength'     => ContestStorage::NAME_MAX,
+    '#required'      => TRUE,
+    '#weight'        => 0,
+  );
+  $form['fieldset']['contest_address'] = array(
+    '#title'         => t('Address'),
+    '#type'          => 'textfield',
+    '#attributes'    => array('pattern' => '^[\s\w\-\.]+$'),
+    '#default_value' => $usr->address,
+    '#size'          => 30,
+    '#maxlength'     => ContestStorage::ADDRESS_MAX,
+    '#required'      => TRUE,
+    '#weight'        => 1,
+  );
+  $form['fieldset']['contest_city'] = array(
+    '#title'         => t('City'),
+    '#type'          => 'textfield',
+    '#attributes'    => array('pattern' => '^[\s\w\-\.]+$'),
+    '#default_value' => $usr->city,
+    '#size'          => 30,
+    '#maxlength'     => ContestStorage::CITY_MAX,
+    '#required'      => TRUE,
+    '#weight'        => 2,
+  );
+  if (!empty($states)) {
+    $form['fieldset']['contest_state'] = array(
+      '#title'         => t('State'),
+      '#type'          => 'select',
+      '#options'       => array_merge(array('' => t('-Select-')), $states),
+      '#default_value' => $usr->state,
+      '#required'      => TRUE,
+      '#weight'        => 3,
+    );
+  }
+  else {
+    $form['fieldset']['contest_state'] = array(
+      '#title'         => t('Province'),
+      '#type'          => 'textfield',
+      '#attributes'    => array('pattern' => '[a-zA-Z]+'),
+      '#default_value' => $usr->state,
+      '#size'          => 30,
+      '#maxlength'     => 50,
+      '#required'      => FALSE,
+      '#weight'        => 3,
+    );
+  }
+  $form['fieldset']['contest_zip'] = array(
+    '#title'         => t('Zip'),
+    '#type'          => 'textfield',
+    '#attributes'    => !empty($states) ? array('pattern' => '^\d{5}$') : array('pattern' => '[a-zA-Z0-9]+'),
+    '#default_value' => $usr->zip,
+    '#size'          => 30,
+    '#maxlength'     => (variable_get('site_default_country', '') == 'US') ? ContestStorage::ZIP_MAX : 10,
+    '#required'      => TRUE,
+    '#weight'        => 4,
+  );
+  $form['fieldset']['mail'] = array(
+    '#title'         => t('Email'),
+    '#type'          => 'textfield',
+    '#attributes'    => array('pattern' => '^\s*[\w\-\.]+@[\w\-\.]+\.\w+\s*$'),
+    '#default_value' => $usr->mail,
+    '#size'          => 30,
+    '#maxlength'     => 100,
+    '#required'      => TRUE,
+    '#weight'        => 5,
+  );
+  $form['fieldset']['contest_phone'] = array(
+    '#title'         => t('Phone'),
+    '#type'          => 'textfield',
+    '#default_value' => $usr->phone,
+    '#size'          => 30,
+    '#maxlength'     => ContestStorage::PHONE_MAX,
+    '#required'      => FALSE,
+    '#weight'        => 6,
+  );
+  $form['fieldset']['contest_birthdate'] = array(
+    '#title'               => t('Birthday'),
+    '#type'                => 'date_popup',
+    '#default_value'       => date('Y-m-d', $usr->birthdate),
+    '#date_format'         => 'Y-m-d',
+    '#date_increment'      => ContestStorage::DAY,
+    '#date_label_position' => 'invisible',
+    '#date_timezone'       => date_default_timezone(),
+    '#date_year_range'     => '-100:+0',
+    '#required'            => TRUE,
+    '#weight'              => 70,
+  );
+  $form['contest_optin'] = array(
+    '#title'         => t('Opt In'),
+    '#type'          => 'checkbox',
+    '#description'   => t("I'd like to receive information about contests and special offers from the sponsor and promoter."),
+    '#attributes'    => array('pattern' => '^\d$'),
+    '#prefix'        => '<div id="contest-optin">',
+    '#suffix'        => '</div>',
+    '#default_value' => 1,
+    '#required'      => TRUE,
+    '#weight'        => 8,
+  );
+  $form['clear_both'] = array(
+    '#prefix' => '<div style="clear:both">',
+    '#suffix' => '</div>',
+    '#type'   => 'markup',
+    '#value'  => '&nbsp;',
+    '#weight' => 9,
+  );
+  $form['submit'] = array(
+    '#type'   => 'submit',
+    '#value'  => t('Enter Contest'),
+    '#weight' => 10,
+  );
+  return $form;
+}
+
+/**
+ * Custom validation function for the contest setting form.
+ */
+function contest_entry_form_submit($form, &$state) {
+  global $user;
+  $periods = ContestStorage::getPeriodOptions();
+
+  // Users must have a complete profile to enter a contest.
+  $state['values']['uid'] = ContestHelper::contestant($state);
+
+  $usr = new ContestUser($state['values']['uid']);
+
+  // If an incomplete profile give an explanation and redirect to the login.
+  if ($user->uid != $usr->uid && (!$usr->fullName || !$usr->address || !$usr->city || !$usr->state || !$usr->zip)) {
+    drupal_set_message(t('You already have an account with an incomplete profile. The easiest way to enter the contest is to log in and come back and enter the contest.', 'warning'));
+    drupal_set_message(t("Once your profile is complete you won't have to do this again."));
+    drupal_set_message(t('If you have problems logging in click the "Request new password" link and a login link will be sent to your email.'));
+
+    return 'user';
+  }
+  // I don't think this should ever get used, but...
+  elseif (!$usr->fullName || !$usr->address || !$usr->city || !$usr->state || !$usr->zip) {
+    drupal_set_message(t('You must have a complete profile to enter a contest.'), 'warning');
+
+    return "user/$usr->uid/edit/Contest";
+  }
+  // We'll check to see if the contest is running by getting the entry period.
+  $period = ContestStorage::getPeriod($state['values']['nid']);
+
+  if (!$period) {
+    drupal_set_message(t('This contest is closed.'), 'warning');
+
+    return 'contest';
+  }
+  // Check to see if they've entered today.
+  $entered = ContestHelper::getEntered($state['values']['uid'], $state['values']['nid'], $period);
+
+  if ($entered) {
+    drupal_set_message(t("You can enter the contest @period. We already have an entry for you during this period.", array('@period' => $periods[$period])), 'warning');
+
+    return "node/{$state['values']['nid']}";
+  }
+  // Enter them into the contest.
+  $fields = array(
+    'nid'     => $state['values']['nid'],
+    'uid'     => $usr->uid,
+    'created' => REQUEST_TIME,
+    'ip'      => ip_address(),
+  );
+  ContestStorage::saveEntry($fields);
+
+  drupal_set_message(t('You have been entered into the contest.'));
+}
+
+/**
+ * Custom submit function for the contest entry form.
+ */
+function contest_entry_form_validate($form, &$state) {
+  if (!ContestHelper::minAge($state['values']['contest_birthdate'])) {
+    form_set_error('contest_birthdate', t("You must be at least @age years old to enter.", array('@age' => variable_get('contest_min_age', 18))));
+  }
+  if ($state['values']['contest_optin'] != 1) {
+    form_set_error('contest_optin', t("You must agree to be contacted by the contest's sponsors and host to enter."));
+  }
+}
+
+/**
+ * Implements hook_field_extra_fields().
+ */
+function contest_field_extra_fields() {
+  $extra['node']['contest'] = array(
+    'display' => array(
+      'contest_entry_form' => array(
+        'label'       => t('Contest Entry Form'),
+        'description' => t('Allows a user to enter a contest.'),
+        'weight'      => 1,
+        'display' => array(
+          'default' => array(
+            'weight'  => 1,
+            'visible' => TRUE,
+          ),
+          'full' => array(
+            'weight'  => 1,
+            'visible' => TRUE,
+          ),
+          'teaser' => array(
+            'weight'  => 1,
+            'visible' => FALSE,
+          ),
+          'block' => array(
+            'weight'  => 1,
+            'visible' => FALSE,
+          ),
+          'rss' => array(
+            'weight'  => 1,
+            'visible' => FALSE,
+          ),
+        ),
+      ),
+      'contest_results' => array(
+        'label'       => t('Contest Results'),
+        'description' => t('Displays the contest results.'),
+        'weight'      => 2,
+        'display' => array(
+          'default' => array(
+            'weight'  => 2,
+            'visible' => TRUE,
+          ),
+          'full' => array(
+            'weight'  => 2,
+            'visible' => TRUE,
+          ),
+          'teaser' => array(
+            'weight'  => 2,
+            'visible' => FALSE,
+          ),
+          'block' => array(
+            'weight'  => 2,
+            'visible' => FALSE,
+          ),
+          'rss' => array(
+            'weight'  => 2,
+            'visible' => FALSE,
+          ),
+        ),
+      ),
+    ),
+  );
+  return $extra;
+}
+
+/**
+ * Implements hook_flush_caches().
+ */
+function contest_flush_caches() {
+  ContestCache::flushCache();
+
+  return array();
+}
+
+/**
+ * Implements hook_form().
+ */
+function contest_form($node, $state) {
+  $end = !empty($node->contest->end) ? $node->contest->end : REQUEST_TIME;
+  $start = !empty($node->contest->start) ? $node->contest->start : REQUEST_TIME;
+  $type = node_type_get_type($node);
+
+  $form['#submit'][] = 'contest_form_submit';
+  $form['#validate'][] = 'contest_form_validate';
+
+  $form['title'] = array(
+    '#title'         => check_plain($type->title_label),
+    '#type'          => 'textfield',
+    '#default_value' => !empty($node->title) ? check_plain($node->title) : '',
+    '#required'      => TRUE,
+    '#weight'        => 0,
+  );
+  $form['places'] = array(
+    '#title'         => t('Winning Places'),
+    '#type'          => 'select',
+    '#options'       => drupal_map_assoc(range(1, 10)),
+    '#default_value' => !empty($node->contest->places) ? $node->contest->places : 1,
+    '#required'      => TRUE,
+    '#weight'        => 50,
+  );
+  $form['period'] = array(
+    '#title'         => t('User Can Enter'),
+    '#type'          => 'select',
+    '#options'       => ContestStorage::getPeriodOptions(),
+    '#default_value' => !empty($node->contest->period) ? $node->contest->period : ContestStorage::DAY,
+    '#required'      => TRUE,
+    '#weight'        => 60,
+  );
+  $form['start'] = array(
+    '#title'           => t('Start Contest'),
+    '#type'            => 'date_popup',
+    '#default_value'   => date('Y-m-d', $start),
+    '#date_timezone'   => date_default_timezone(),
+    '#date_format'     => 'Y-m-d',
+    '#date_increment'  => ContestStorage::DAY,
+    '#date_year_range' => '0:+3',
+    '#required'        => TRUE,
+    '#weight'          => 70,
+  );
+  $form['end'] = array(
+    '#title'           => t('End Contest'),
+    '#type'            => 'date_popup',
+    '#default_value'   => date('Y-m-d', $end),
+    '#date_timezone'   => date_default_timezone(),
+    '#date_format'     => 'Y-m-d',
+    '#date_increment'  => ContestStorage::DAY,
+    '#date_year_range' => '0:+3',
+    '#required'        => TRUE,
+    '#weight'          => 80,
+  );
+  return $form;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function contest_form_field_ui_display_overview_form_alter(&$form, &$state) {
+  if ($form['#view_mode'] == 'block' || $form['#view_mode'] == 'teaser') {
+    unset($form['fields']['contest_entry_form']);
+    unset($form['fields']['contest_results']);
+  }
+}
+
+/**
+ * Custom submit function.
+ */
+function contest_form_submit($form, &$state) {
+  $node = $state['node'];
+  $fields = array(
+    'period',
+    'places',
+    'sponsor',
+    'sponsor_email',
+    'sponsor_url',
+  );
+  if (empty($node->contest) || !is_object($node->contest)) {
+    $node->contest = new stdClass();
+  }
+  $node->contest->start = strtotime($state['values']['start']);
+  unset($state['values']['start']);
+
+  $node->contest->end = strtotime($state['values']['end']);
+  unset($state['values']['end']);
+
+  foreach ($fields as $field) {
+    if (!empty($state['values'][$field])) {
+      $node->contest->{$field} = $state['values'][$field];
+      unset($state['values'][$field]);
+    }
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function contest_form_user_profile_form_alter(&$form, &$state) {
+  $states = ContestStorage::getStates(variable_get('site_default_country', ''));
+
+  if (!empty($states)) {
+    $form['field_contest_state'][LANGUAGE_NONE][0]['value']['#type'] = 'select';
+    $form['field_contest_state'][LANGUAGE_NONE][0]['value']['#options'] = array_merge(array('' => t('-Select-')), $states);
+    $form['field_contest_state'][LANGUAGE_NONE][0]['value']['#size'] = 1;
+  }
+  else {
+    $form['field_contest_state'][LANGUAGE_NONE][0]['value']['#access'] = FALSE;
+    $form['field_contest_state'][LANGUAGE_NONE][0]['value']['#required'] = FALSE;
+  }
+}
+
+/**
+ * Custom validation function.
+ */
+function contest_form_validate($form, &$state) {
+  $day = ContestStorage::DAY;
+  $end = strtotime($state['values']['end']);
+  $start = strtotime($state['values']['start']);
+
+  // If the end date is before the start date set an error.
+  if ($end < $start) {
+    form_set_error('end', t('Contest cannot end before it starts.'));
+  }
+  // If the end date is the same as the start date set an error.
+  if (($end - $start) < $day) {
+    form_set_error('start', t('Contest must run for at least one day.'));
+  }
+}
+
+/**
+ * Implements hook_help().
+ */
+function contest_help($path, $arg) {
+  switch ($path) {
+    case 'admin/help#contest':
+      $txt = file_get_contents(drupal_get_path('module', 'contest') . '/README.txt');
+      return str_replace("\n", "\n<br />", check_plain($txt));
+  }
+}
+
+/**
+ * Implements hook_insert().
+ */
+function contest_insert($node) {
+  if (!empty($node->nid) && ContestStorage::exists($node->nid)) {
+    return contest_update($node) ? TRUE : FALSE;
+  }
+  $sponsor_uid = (!empty($node->contest->sponsor) && !empty($node->contest->sponsor_email)) ? ContestHelper::getUid($node->contest->sponsor, $node->contest->sponsor_email) : 0;
+
+  $fields = array(
+    'nid'         => $node->nid,
+    'vid'         => $node->vid,
+    'sponsor_uid' => $sponsor_uid,
+    'sponsor_url' => !empty($node->contest->sponsor_url) ? $node->contest->sponsor_url : '',
+    'start'       => $node->contest->start,
+    'end'         => $node->contest->end,
+    'places'      => $node->contest->places,
+    'period'      => $node->contest->period,
+  );
+  return ContestStorage::insert($fields);
+}
+
+/**
+ * Implements hook_load().
+ */
+function contest_load(&$nodes) {
+  foreach ($nodes as $nid => $node) {
+    $node->contest = ContestStorage::loadData($nid);
+  }
+}
+
+/**
+ * Implements hook_mail().
+ */
+function contest_mail($key, &$message, $params) {
+  global $language;
+  $language = isset($message['language']) ? $message['language'] : $language;
+
+  $message['subject'] .= _user_mail_text("{$key}_subject", $language, $params);
+  $message['body'][] = _user_mail_text("{$key}_body", $language, $params);
+}
+
+/**
+ * Implements hook_menu().
+ */
+function contest_menu() {
+  $items['admin/config/contest'] = array(
+    'title'            => 'Contest Config',
+    'description'      => 'Custom settings for the Contest site.',
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('contest_settings_form'),
+    'access arguments' => array('administer contest'),
+    'file'             => 'contest.admin.inc',
+    'type'             => MENU_NORMAL_ITEM,
+  );
+  $items['admin/config/contest/export'] = array(
+    'title'            => 'Export',
+    'description'      => 'Export all contestants.',
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('contest_export_form'),
+    'access arguments' => array('administer contest'),
+    'file'             => 'contest.admin.inc',
+    'type'             => MENU_LOCAL_TASK,
+    'weight'           => 10,
+  );
+  $items['admin/config/contest/settings'] = array(
+    'title'            => 'Settings',
+    'description'      => 'Global contest settings.',
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('contest_settings_form'),
+    'access arguments' => array('administer contest'),
+    'file'             => 'contest.admin.inc',
+    'type'             => MENU_DEFAULT_LOCAL_TASK,
+    'weight'           => 0,
+  );
+  $items['contest'] = array(
+    'title'            => '!site_name Contests',
+    'title arguments'  => array('!site_name' => variable_get('site_name', '')),
+    'page callback'    => 'contest_list_page',
+    'access arguments' => array('access content'),
+    'file'             => 'contest.pages.inc',
+    'type'             => MENU_NORMAL_ITEM,
+  );
+  $items['contest/clear-winners/%'] = array(
+    'title'            => 'Clear Contest Winner(s)',
+    'page callback'    => 'contest_clear_winners',
+    'page arguments'   => array(2, 3),
+    'access arguments' => array('edit contest'),
+    'file'             => 'contest.pages.inc',
+    'type'             => MENU_CALLBACK,
+  );
+  $items['contest/export-all'] = array(
+    'title'            => 'Contest User Export',
+    'page callback'    => 'contest_export_all',
+    'access arguments' => array('administer contest'),
+    'file'             => 'contest.pages.inc',
+    'type'             => MENU_CALLBACK,
+  );
+  $items['contest/export-entries/%node'] = array(
+    'title'            => 'Contest Entries Export',
+    'page callback'    => 'contest_export_entries',
+    'page arguments'   => array(2),
+    'access arguments' => array('administer contest'),
+    'file'             => 'contest.pages.inc',
+    'type'             => MENU_CALLBACK,
+  );
+  $items['contest/export-unique/%node'] = array(
+    'title'            => 'Contest Unique Entries Export',
+    'page callback'    => 'contest_export_unique',
+    'page arguments'   => array(2),
+    'access arguments' => array('administer contest'),
+    'file'             => 'contest.pages.inc',
+    'type'             => MENU_CALLBACK,
+  );
+  $items['contest/pick-winner/%'] = array(
+    'title'            => 'Select Contest Winner',
+    'page callback'    => 'contest_pick_winner',
+    'page arguments'   => array(2, 3),
+    'access arguments' => array('edit contest'),
+    'file'             => 'contest.pages.inc',
+    'type'             => MENU_CALLBACK,
+  );
+  $items['contest/publish-winners/%node'] = array(
+    'title'            => 'Publish Contest Winners',
+    'page callback'    => 'contest_publish_winners',
+    'page arguments'   => array(2),
+    'access arguments' => array('edit contest'),
+    'file'             => 'contest.pages.inc',
+    'type'             => MENU_CALLBACK,
+  );
+  $items['contest/unpublish-winners/%node'] = array(
+    'title'            => 'Unpublish Contest Winners',
+    'page callback'    => 'contest_unpublish_winners',
+    'page arguments'   => array(2),
+    'access arguments' => array('edit contest'),
+    'file'             => 'contest.pages.inc',
+    'type'             => MENU_CALLBACK,
+  );
+  $items['contest/usr-autocomplete'] = array(
+    'page callback'     => 'contest_usr_autocomplete',
+    'delivery callback' => 'ajax_callback',
+    'access arguments'  => array('access content'),
+    'file'              => 'contest.pages.inc',
+    'type'              => MENU_CALLBACK,
+  );
+  $items['node/%contest_menu/contest-admin'] = array(
+    'title'            => 'Contest',
+    'page callback'    => 'contest_admin_page',
+    'page arguments'   => array(1),
+    'access arguments' => array('administer contest'),
+    'file'             => 'contest.pages.inc',
+    'type'             => MENU_LOCAL_TASK,
+    'weight'           => 1,
+  );
+  return $items;
+}
+
+/**
+ * Menu loader callback.
+ */
+function contest_menu_load($nid) {
+  if (!is_numeric($nid)) {
+    return FALSE;
+  }
+  $node = node_load($nid);
+
+  if (empty($node->type) || $node->type != 'contest') {
+    return FALSE;
+  }
+  return $node;
+}
+
+/**
+ * Implements hook_node_info().
+ */
+function contest_node_info() {
+  return array(
+    'contest' => array(
+      'name'        => t('Contest'),
+      'description' => t('A <em>contest</em> is a content type that allows a user to enter to win prizes via a random selection.'),
+      'base'        => 'contest',
+      'has_body'    => TRUE,
+      'has_title'   => TRUE,
+      'title_label' => t('Title'),
+      'help'        => '',
+      'locked'      => TRUE,
+    ),
+  );
+}
+
+/**
+ * Implements hook_permission().
+ */
+function contest_permission() {
+  return array(
+    'administer contest' => array(
+      'title'       => t('Administer the Contest Module'),
+      'description' => t('Perform administration tasks for the contest module.'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_rdf_mapping().
+ */
+function contest_rdf_mapping() {
+  return array(
+    array(
+      'type'    => 'node',
+      'bundle'  => 'contest',
+      'mapping' => array(
+        'rdftype' => array(
+          'sioc:Post',
+          'sioct:Sweepstakes',
+        ),
+      ),
+    ),
+  );
+}
+
+/**
+ * Implements hook_theme().
+ */
+function contest_theme() {
+  return array(
+    'contest_admin_page' => array(
+      'path'     => ContestHelper::templatePath('contest', 'contest-admin-page'),
+      'template' => 'contest-admin-page',
+    ),
+    'contest_list_block' => array(
+      'path'     => ContestHelper::templatePath('contest', 'contest-list-block'),
+      'template' => 'contest-list-block',
+    ),
+    'contest_list_page' => array(
+      'path'     => ContestHelper::templatePath('contest', 'contest-list-page'),
+      'template' => 'contest-list-page',
+    ),
+    'contest_results' => array(
+      'path'     => ContestHelper::templatePath('contest', 'contest-results'),
+      'template' => 'contest-results',
+    ),
+  );
+}
+
+/**
+ * Implements hook_update().
+ */
+function contest_update($node) {
+  if (!empty($node->nid) && !ContestStorage::exists($node->nid)) {
+    return contest_insert($node);
+  }
+  $sponsor_uid = (!empty($node->contest->sponsor) && !empty($node->contest->sponsor_email)) ? ContestHelper::getUid($node->contest->sponsor, $node->contest->sponsor_email) : 0;
+
+  $fields = array(
+    'nid'         => $node->nid,
+    'sponsor_uid' => $sponsor_uid,
+    'sponsor_url' => !empty($node->contest->sponsor_url) ? $node->contest->sponsor_url : '',
+    'start'       => $node->contest->start,
+    'end'         => $node->contest->end,
+    'places'      => $node->contest->places,
+    'period'      => $node->contest->period,
+  );
+  return ContestStorage::update($node->vid, $fields);
+}
+
+/**
+ * Implements hook_view().
+ */
+function contest_view($node, $view_mode) {
+  drupal_add_library('system', 'drupal.collapse');
+  drupal_add_css(drupal_get_path('module', 'contest') . '/css/contest.css');
+
+  $access = TRUE;
+  drupal_alter('contest_entry_access', $access);
+
+  // If this isn't the full view we don't need the form, results or T&C.
+  if ($view_mode != 'full' || !$access) {
+    return $node;
+  }
+  drupal_alter('contest_entry_access', $access);
+
+  // Add the form if the contest is running.
+  if ($node->contest->start < REQUEST_TIME && REQUEST_TIME < $node->contest->end) {
+    $node->content['contest_entry_form'] = drupal_get_form('contest_entry_form', $node);
+  }
+  // Add the reslults if the contest is over.
+  elseif (ContestStorage::getPublished($node->nid)) {
+    $node->content['contest_results'] = array('#markup' => theme('contest_results', ContestData::results($node)));
+  }
+  return $node;
+}

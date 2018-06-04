@@ -1,0 +1,38 @@
+<?php
+
+/**
+ * @file
+ * The installation file for the contest_poll module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function contest_poll_schema() {
+  $schema['contest_poll'] = array(
+    'description' => 'Relate a contest to poll(s).',
+    'fields' => array(
+      'pid' => array(
+        'description' => "The poll {node}.nid.",
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+      ),
+      'nid' => array(
+        'description' => "The contest's {node}.nid.",
+        'type'        => 'int',
+        'unsigned'    => TRUE,
+        'not null'    => TRUE,
+      ),
+    ),
+    'indexes' => array(
+      'nid' => array('nid'),
+      'pid' => array('pid'),
+    ),
+    'unique keys' => array(
+      'pid_nid'     => array('pid', 'nid'),
+    ),
+    'primary key' => array('pid'),
+  );
+  return $schema;
+}

@@ -1,0 +1,10 @@
+# Ignore project files that should not be in version control
+/composer.lock
+/vendor
+
+# Ignore the folder created by PhpStorm
+.idea/*
+
+# Ignore OSX generated files
+.DS_Store
+._*

@@ -1,0 +1,205 @@
+<?php
+
+/**
+ * @file
+ * The contest_tnc module file.
+ */
+
+/**
+ * Implements hook_date_format_types().
+ */
+function contest_tnc_date_format_types() {
+  return array('contest_date' => t('Month Day Year'));
+}
+
+/**
+ * Implements hook_date_formats().
+ */
+function contest_tnc_date_formats() {
+  $formats = array(
+    0 => array(
+      'type'    => 'contest_date',
+      'format'  => 'F j Y',
+      'locales' => array(),
+    ),
+  );
+  foreach ($formats as $format) {
+    variable_set("date_format_{$format['type']}", $format['format']);
+  }
+  return $formats;
+}
+
+/**
+ * Implements hook_field_extra_fields().
+ */
+function contest_tnc_field_extra_fields() {
+  $extra['node']['contest'] = array(
+    'display' => array(
+      'contest_tnc' => array(
+        'label'       => t('Contest T&C'),
+        'description' => t("The contest's terms and conditions."),
+        'weight'      => 3,
+        'display' => array(
+          'default' => array(
+            'weight'  => 3,
+            'visible' => TRUE,
+          ),
+          'full' => array(
+            'weight'  => 3,
+            'visible' => TRUE,
+          ),
+          'teaser' => array(
+            'weight'  => 3,
+            'visible' => FALSE,
+          ),
+          'block' => array(
+            'weight'  => 3,
+            'visible' => FALSE,
+          ),
+          'rss' => array(
+            'weight'  => 3,
+            'visible' => FALSE,
+          ),
+        ),
+      ),
+    ),
+  );
+  return $extra;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function contest_tnc_form_block_admin_display_form_alter(&$form, &$state, $form_id) {
+  unset($form['blocks']['block_' . variable_get('contest_tnc_block', 0)]);
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function contest_tnc_form_contest_node_form_alter(&$form, &$state, $form_id) {
+  if (!variable_get('contest_tnc_enable_sponsor', 0)) {
+    return;
+  }
+  $node = !empty($form['#node']) ? $form['#node'] : NULL;
+
+  $form['sponsor_wrapper'] = array(
+    '#title'       => t('Sponsor'),
+    '#description' => t("The contest's sponsor information for the terms and conditions."),
+    '#type'        => 'fieldset',
+    '#collapsible' => FALSE,
+    '#collapsed'   => FALSE,
+    '#weight'      => 20,
+  );
+  $form['sponsor_wrapper']['sponsor'] = array(
+    '#title'         => t('Sponsor Name'),
+    '#type'          => 'textfield',
+    '#default_value' => !empty($node->contest->sponsor) ? check_plain($node->contest->sponsor) : '',
+    '#required'      => FALSE,
+    '#maxlength'     => ContestStorage::NAME_MAX,
+    '#weight'        => 10,
+  );
+  $form['sponsor_wrapper']['sponsor_email'] = array(
+    '#title'         => t('Sponsor Email'),
+    '#type'          => 'textfield',
+    '#default_value' => !empty($node->contest->sponsor_email) ? check_plain($node->contest->sponsor_email) : '',
+    '#required'      => FALSE,
+    '#weight'        => 20,
+  );
+  $form['sponsor_wrapper']['sponsor_url'] = array(
+    '#title'         => t('Sponsor Url'),
+    '#description'   => t('A URL including protocol, (http, https).'),
+    '#type'          => 'textfield',
+    '#default_value' => !empty($node->contest->sponsor_url) ? check_plain($node->contest->sponsor_url) : '',
+    '#required'      => FALSE,
+    '#weight'        => 30,
+  );
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function contest_tnc_form_field_ui_display_overview_form_alter(&$form, &$state) {
+  if ($form['#view_mode'] == 'block' || $form['#view_mode'] == 'teaser') {
+    unset($form['fields']['contest_tnc']);
+  }
+}
+
+/**
+ * Implements hook_help().
+ */
+function contest_tnc_help($path, $arg) {
+  switch ($path) {
+    case 'admin/help#contest_tnc':
+      $txt = file_get_contents(drupal_get_path('module', 'contest_tnc') . '/README.txt');
+      return str_replace("\n", "\n<br />", check_plain($txt));
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function contest_tnc_menu() {
+  return array(
+    'admin/config/contest/tnc' => array(
+      'title'            => 'Terms & Conditions',
+      'description'      => 'Configure the terms and conditions.',
+      'page callback'    => 'drupal_get_form',
+      'page arguments'   => array('contest_tnc_settings_form'),
+      'access arguments' => array('administer contest'),
+      'file'             => 'contest_tnc.admin.inc',
+      'type'             => MENU_LOCAL_TASK,
+      'weight'           => 20,
+    ),
+  );
+}
+
+/**
+ * Implements hook_node_view().
+ */
+function contest_tnc_node_view($node, $view_mode, $langcode) {
+  $access = TRUE;
+
+  drupal_alter('contest_entry_access', $access);
+
+  if ($node->type == 'contest' && $view_mode == 'full' && $access) {
+    $node->content['contest_tnc'] = ContestTncHelper::getTnc($node);
+  }
+}
+
+/**
+ * Implements hook_theme().
+ */
+function contest_tnc_theme() {
+  return array(
+    'contest_tnc' => array(
+      'render element' => 'element',
+    ),
+  );
+}
+
+/**
+ * Theme function for the terms and conditions.
+ *
+ * @param array $args
+ *   An array of arguments.
+ *
+ * @return array
+ *   A drupal form array used to wrap the T&C in a collapsible fieldset.
+ */
+function theme_contest_tnc(array $args) {
+  $node = !empty($args['node']) ? $args['node'] : new stdClass();
+
+  $form['wrapper'] = array(
+    '#type'        => 'fieldset',
+    '#title'       => t('Terms & Conditions'),
+    '#attributes'  => array('class' => array('collapsible', 'collapsed')),
+    '#collapsible' => TRUE,
+    '#collapsed'   => TRUE,
+  );
+  $form['wrapper']['tnc'] = array(
+    'type'    => 'markup',
+    '#markup' => !empty($args['tnc']) ? token_replace($args['tnc'], array('node' => $node)) : '',
+  );
+  return $form;
+}

@@ -1,0 +1,25 @@
+/**
+ * @file
+ * Lazyloader admin CSS
+ */
+
+#edit-lazyloader-icon {
+  display: -ms-flexbox;
+  display: -webkit-flex;
+  display: flex;
+  -moz-flex-wrap: wrap;
+  -ms-flex-wrap: wrap;
+  flex-wrap: wrap;
+}
+
+#edit-lazyloader-icon .form-item {
+  position: relative;
+  padding-left: 20px;
+  margin:0 10px;
+}
+
+#edit-lazyloader-icon .form-item input {
+  position: absolute;
+  left: 0;
+  top: 5px;
+}

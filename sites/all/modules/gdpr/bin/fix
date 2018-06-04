@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+
+(
+    cd `dirname "$0"`/..
+    ./vendor/bin/phpcbf --colors --standard=Drupal -v ./gdpr.module
+    ./vendor/bin/phpcbf --colors --standard=Drupal -v ./gdpr.test
+    ./vendor/bin/phpcbf --colors --standard=Drupal -v --extensions=php ./templates
+)

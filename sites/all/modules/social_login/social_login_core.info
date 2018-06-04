@@ -1,0 +1,10 @@
+name = "OneAll Social Login, Core"
+description = Contains the core functions used by the OneAll Social Login Module.
+package = "OneAll Social Login" 
+core = 7.x
+
+; Information added by Drupal.org packaging script on 2018-05-24
+version = "7.x-2.1"
+core = "7.x"
+project = "social_login"
+datestamp = "1527169089"

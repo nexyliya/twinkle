@@ -1,0 +1,116 @@
+<?php
+
+/**
+ * @file
+ * The contest_poll module file.
+ */
+
+/**
+ * Custom validation function for the contest setting form.
+ */
+function contest_poll_admin_form_submit($form, &$state) {
+  if (!empty($state['values']['nid']) && !empty($state['values']['contest_id'])) {
+    ContestPollStorage::mergePoll($state['values']['nid'], $state['values']['contest_id']);
+  }
+  elseif (!empty($state['values']['nid'])) {
+    ContestPollStorage::deletePoll($state['values']['nid']);
+  }
+}
+
+/**
+ * Custom validation function for the contest setting form.
+ */
+function contest_poll_entry_form_submit($form, &$state) {
+  $form_state = ContestPollHelper::getValues($state);
+
+  return contest_entry_form_submit($form, $form_state);
+}
+
+/**
+ * Custom submit function for the contest entry form.
+ */
+function contest_poll_entry_form_validate($form, &$state) {
+  $form_state = ContestPollHelper::getValues($state);
+
+  return contest_entry_form_validate($form, $form_state);
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function contest_poll_form_poll_node_form_alter(&$form, &$state) {
+  $form['contest_id'] = array(
+    '#title'         => t('Contest'),
+    '#description'   => t('The contest to link to this poll.'),
+    '#type'          => 'select',
+    '#default_value' => !empty($form['nid']['#value']) ? ContestPollStorage::getContestId($form['nid']['#value']) : '',
+    '#options'       => ContestHelper::getFormOptions(),
+  );
+  $form['#submit'][] = 'contest_poll_admin_form_submit';
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function contest_poll_form_poll_view_voting_alter(&$form, &$state) {
+  $access = TRUE;
+
+  drupal_alter('contest_entry_access', $access);
+
+  if (!$access || !empty($form['#block'])) {
+    return;
+  }
+  $contest_id = !empty($form['#node']->nid) ? ContestPollStorage::getContestId($form['#node']->nid) : 0;
+
+  if (!$contest_id || !ContestStorage::running($contest_id)) {
+    return;
+  }
+  $entry_form = contest_entry_form();
+
+  unset($entry_form['submit']);
+  unset($entry_form['#id']);
+  unset($entry_form['#submit']);
+  unset($entry_form['#validate']);
+
+  $entry_form['fieldset']['contest_id'] = array(
+    '#type'  => 'value',
+    '#value' => $contest_id,
+  );
+  if (module_exists('contest_tnc')) {
+    $tnc = ContestTncHelper::getTnc(node_load($contest_id));
+
+    $entry_form['contest_tnc'] = array(
+      '#type'   => 'markup',
+      '#markup' => drupal_render($tnc),
+    );
+  }
+  $form += $entry_form;
+
+  $form['#theme'] = 'contest_poll_vote';
+  $form['#validate'][] = 'contest_poll_entry_form_validate';
+  $form['vote']['#submit'][] = 'contest_poll_entry_form_submit';
+}
+
+/**
+ * Implements hook_help().
+ */
+function contest_poll_help($path, $arg) {
+  switch ($path) {
+    case 'admin/help#contest_poll':
+      $txt = file_get_contents(drupal_get_path('module', 'contest_poll') . '/README.txt');
+      return str_replace("\n", "\n<br />", check_plain($txt));
+  }
+}
+
+/**
+ * Implements hook_theme().
+ */
+function contest_poll_theme() {
+  return array(
+    'contest_poll_vote' => array(
+      'path'           => ContestHelper::templatePath('contest', 'contest-poll-vote'),
+      'render element' => 'form',
+      'template'       => 'contest-poll-vote',
+    ),
+  );
+}

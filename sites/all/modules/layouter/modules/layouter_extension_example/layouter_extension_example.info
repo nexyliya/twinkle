@@ -1,0 +1,12 @@
+name = Layouter Extension Example
+description = Layouter template extension example module.
+core = 7.x
+package = User interface
+dependencies[] = layouter
+
+; Information added by Drupal.org packaging script on 2016-03-23
+version = "7.x-1.10"
+core = "7.x"
+project = "layouter"
+datestamp = "1458706140"
+

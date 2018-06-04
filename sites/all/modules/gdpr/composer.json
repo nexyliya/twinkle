@@ -1,0 +1,20 @@
+{
+  "name": "drupal/gdpr",
+  "description": "Helps with making a site GDPR-compliant.",
+  "type": "drupal-module",
+  "license": "GPL-2.0+",
+  "require" : {
+    "php": "^5.6|>=7.0.8"
+  },
+  "autoload": {
+    "files": [
+      "gdpr.module"
+    ]
+  },
+  "repositories": [
+    {
+      "type": "composer",
+      "url": "https://packages.drupal.org/7"
+    }
+  ]
+}
